@@ -1,0 +1,16 @@
+- name: Add k8s workers to virtual group
+  add_host:
+    name: |-
+      {{
+        node.status.addresses
+        | selectattr('type', 'eq', 'Hostname')
+        | map(attribute='address')
+        | first
+      }}
+    group: k8s_nodes
+  loop: "{{ lookup('kubernetes.core.k8s', kind='Node') }}"
+  loop_control:
+    loop_var: node
+    label: "{{ node.metadata.name }}"
+  when:
+    - '"node-role.kubernetes.io/master" not in node.metadata.labels'

@@ -1,0 +1,33 @@
+---
+kind: StorageClass
+apiVersion: storage.k8s.io/v1
+metadata:
+  name: {{ service.name }}-{{ namespace }}
+provisioner: kubernetes.io/no-provisioner
+volumeBindingMode: WaitForFirstConsumer
+
+{% for node in groups.k8s_nodes %}
+{% set node_index = loop.index %}
+---
+apiVersion: v1
+kind: PersistentVolume
+metadata:
+  name: {{ service.name }}-{{ namespace }}-{{ node_index }}
+spec:
+  storageClassName: {{ service.name }}-{{ namespace }}
+  capacity:
+    storage: {{ service.volume_size }}
+  accessModes:
+    - ReadWriteOnce
+  persistentVolumeReclaimPolicy: Retain
+  local:
+    path: /opt/pv-{{ service.name }}-{{ namespace }}
+  nodeAffinity:
+    required:
+      nodeSelectorTerms:
+        - matchExpressions:
+            - key: kubernetes.io/hostname
+              operator: In
+              values:
+                - {{ node }}
+{% endfor %}

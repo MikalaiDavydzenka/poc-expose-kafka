@@ -1,0 +1,57 @@
+---
+- hosts: localhost
+  gather_facts: no
+  connection: local
+  roles:
+    - role: k8s_cluster
+
+- hosts: k8s_nodes
+  gather_facts: no
+  become: yes
+  vars:
+    action: install
+  roles:
+    - role: local_volumes
+
+- hosts: localhost
+  gather_facts: no
+  connection: local
+  vars:
+    action: install
+  roles:
+    - role: persistent_volume
+
+- hosts: localhost
+  gather_facts: no
+  connection: local
+  vars:
+    action: install
+  tasks:
+    - name: install bitnami/kafka
+      community.kubernetes.helm:
+        state: "{{ 'present' if action == 'install' else 'absent' }}"
+        name: kafka
+        chart_ref: bitnami/kafka
+        release_namespace: kafka
+        create_namespace: true
+        values:
+          heapOpts: -Xmx256m -Xms256m
+          rbac:
+            create: true
+          externalAccess:
+            enabled: true
+            autoDiscovery:
+              enabled: true
+          replicaCount: 3
+          persistence:
+            storageClass: kafka-kafka
+            enable: true
+            size: 5Gi
+          zookeeper:
+            enabled: true
+            heapOpts: -Xmx256m -Xms256m
+            replicaCount: 3
+            persistence:
+              storageClass: zookeeper-kafka
+              enable: true
+              size: 5Gi

@@ -1,0 +1,13 @@
+- name: "create persistent volume yaml"
+  kubernetes.core.k8s:
+    state: "{{ 'present' if action == 'install' else 'absent' }}"
+    template: "pvc.yaml"
+  vars:
+    namespace: kafka
+  loop_control:
+    loop_var: service
+  loop:
+    - name: kafka
+      volume_size: 5Gi
+    - name: zookeeper
+      volume_size: 5Gi
