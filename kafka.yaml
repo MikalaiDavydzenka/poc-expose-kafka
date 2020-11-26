@@ -20,13 +20,7 @@
     action: install
   roles:
     - role: persistent_volume
-
-- hosts: localhost
-  gather_facts: no
-  connection: local
-  vars:
-    action: install
-  tasks:
+  post_tasks:
     - name: install bitnami/kafka
       community.kubernetes.helm:
         state: "{{ 'present' if action == 'install' else 'absent' }}"

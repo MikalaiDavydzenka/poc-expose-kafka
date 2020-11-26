@@ -1,0 +1,74 @@
+- hosts: k8s_workers
+  gather_facts: no
+  tasks:
+    - vars:
+        tmp_meta_properties: "/tmp/{{ inventory_hostname }}_kafka_meta.properties"
+      block:
+        - name: "Retrieve meta properties"
+          fetch:
+            src: /opt/pv-kafka-kafka/data/meta.properties
+            dest: /tmp
+          register: fetched_file
+        - name: "Store broker id"
+          set_fact:
+            broker_id: |-
+              {{
+                lookup(
+                  'ini',
+                  'broker.id type=properties file=' ~ fetched_file.dest,
+                )
+              }}
+
+- hosts: localhost
+  gather_facts: no
+  connection: local
+  vars:
+    brokers: {}
+  tasks:
+    - name: append brokers info with broker_ids from metadata
+      set_fact:
+        brokers: |
+          {{
+            brokers
+            | combine(
+                {
+                  host: {
+                    'broker_id': hostvars[host].broker_id,
+                  },
+                },
+                recursive=True,
+              )
+          }}
+      loop: "{{ groups.k8s_workers }}"
+      loop_control:
+        loop_var: host
+    - name: append brokers info with kafka pod names
+      vars:
+        kafka_pods : |
+          {{
+            lookup(
+              'kubernetes.core.k8s',
+              namespace='kafka',
+              kind='pod',
+              label_selector='app.kubernetes.io/name=kafka'
+            )
+          }}
+      set_fact:
+        brokers: |
+          {{
+            brokers
+            | combine(
+                {
+                  pod.spec.nodeName: {
+                    'kafka_pod': pod.metadata.name,
+                  },
+                },
+                recursive=True,
+              )
+          }}
+      loop: "{{ kafka_pods }}"
+      loop_control:
+        loop_var: pod
+        label: "pod: {{ pod.metadata.name }}"
+    - debug:
+        msg: "{{ brokers }}"
