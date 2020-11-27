@@ -1,0 +1,17 @@
+- hosts: k8s_workers
+  gather_facts: no
+  become: true
+  vars:
+    proper_ids:
+      k8s-node-1:
+        zookeeper: 1
+      k8s-node-2:
+        zookeeper: 2
+      k8s-node-3:
+        zookeeper: 3
+  tasks:
+    - name: "Retrieve zookeeper id"
+      copy:
+        dest: /opt/pv-zookeeper-kafka/data/myid
+        content: |
+          {{ proper_ids[inventory_hostname].zookeeper }}

@@ -1,15 +1,17 @@
 - hosts: k8s_workers
   gather_facts: no
   tasks:
-    - vars:
-        tmp_meta_properties: "/tmp/{{ inventory_hostname }}_kafka_meta.properties"
-      block:
-        - name: "Retrieve meta properties"
+    - block:
+        - name: "Retrieve kafka properties"
           fetch:
             src: /opt/pv-kafka-kafka/data/meta.properties
             dest: /tmp
           register: fetched_file
-        - name: "Store broker id"
+        - name: "Retrieve zookeeper id"
+          slurp:
+            src: /opt/pv-zookeeper-kafka/data/myid
+          register: zookeeper_id_file
+        - name: "Store zookeeper id"
           set_fact:
             broker_id: |-
               {{
@@ -18,32 +20,22 @@
                   'broker.id type=properties file=' ~ fetched_file.dest,
                 )
               }}
+            zookeeper_id: "{{ (zookeeper_id_file.content | b64decode).replace('\n', '') }}"
 
 - hosts: localhost
   gather_facts: no
   connection: local
-  vars:
-    brokers: {}
   tasks:
-    - name: append brokers info with broker_ids from metadata
-      set_fact:
-        brokers: |
+    - vars:
+        zookeeper_pods : |
           {{
-            brokers
-            | combine(
-                {
-                  host: {
-                    'broker_id': hostvars[host].broker_id,
-                  },
-                },
-                recursive=True,
-              )
+            lookup(
+              'kubernetes.core.k8s',
+              namespace='kafka',
+              kind='pod',
+              label_selector='app.kubernetes.io/name=zookeeper'
+            )
           }}
-      loop: "{{ groups.k8s_workers }}"
-      loop_control:
-        loop_var: host
-    - name: append brokers info with kafka pod names
-      vars:
         kafka_pods : |
           {{
             lookup(
@@ -53,22 +45,18 @@
               label_selector='app.kubernetes.io/name=kafka'
             )
           }}
-      set_fact:
-        brokers: |
-          {{
-            brokers
-            | combine(
-                {
-                  pod.spec.nodeName: {
-                    'kafka_pod': pod.metadata.name,
-                  },
-                },
-                recursive=True,
-              )
-          }}
-      loop: "{{ kafka_pods }}"
-      loop_control:
-        loop_var: pod
-        label: "pod: {{ pod.metadata.name }}"
-    - debug:
-        msg: "{{ brokers }}"
+      debug:
+        msg: |
+          {% for host in groups.k8s_workers %}
+          [{{ host }}]
+            broker_id     : {{ hostvars[host].broker_id }}
+          {% for pod in kafka_pods | selectattr('spec.nodeName', 'equalto', host) %}
+            kafka_pod     : {{ pod.metadata.name }}
+          {% endfor %}
+
+            zookeeper_id  : {{ hostvars[host].zookeeper_id }}
+          {% for pod in zookeeper_pods | selectattr('spec.nodeName', 'equalto', host) %}
+            zookeeper_pod : {{ pod.metadata.name }}
+          {% endfor %}
+          {% endfor %}
+

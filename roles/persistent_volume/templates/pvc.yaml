@@ -6,7 +6,7 @@ metadata:
 provisioner: kubernetes.io/no-provisioner
 volumeBindingMode: WaitForFirstConsumer
 
-{% for node in groups.k8s_nodes %}
+{% for node in groups.k8s_workers | sort %}
 {% set node_index = loop.index %}
 ---
 apiVersion: v1

@@ -1,31 +1,93 @@
----
-- hosts: localhost
-  gather_facts: no
-  connection: local
-  roles:
-    - role: k8s_cluster
-
-- hosts: k8s_nodes
-  gather_facts: no
-  become: yes
-  vars:
-    action: install
-  roles:
-    - role: local_volumes
+# - hosts: k8s_workers
+#   gather_facts: no
+#   become: yes
+#   vars:
+#     action: install
+#     namespace: kafka
+#   roles:
+#     - role: local_volumes
 
 - hosts: localhost
   gather_facts: no
   connection: local
   vars:
     action: install
+    namespace: kafka
   roles:
     - role: persistent_volume
   post_tasks:
-    - name: install bitnami/kafka
-      community.kubernetes.helm:
+    - name: kafka namespace
+      kubernetes.core.k8s:
+        state: "{{ 'present' if action == 'install' else 'absent' }}"
+        definition:
+          apiVersion: v1
+          kind: Namespace
+          metadata:
+            name: kafka
+            labels:
+              name: kafka
+    - name: configmap update ids
+      kubernetes.core.k8s:
+        state: "{{ 'present' if action == 'install' else 'absent' }}"
+        namespace: "{{ namespace }}"
+        definition:
+          apiVersion: v1
+          data:
+            kafka-entrypoint.sh: |-
+              #!/bin/bash
+              set -o errexit
+              set -o nounset
+              set -o pipefail
+              . /opt/bitnami/scripts/liblog.sh
+              . /opt/bitnami/scripts/libbitnami.sh
+              . /opt/bitnami/scripts/libkafka.sh
+              eval "$(kafka_env)"
+              print_welcome_page
+
+              META_FILE=/bitnami/kafka/data/meta.properties
+              if [ -f "${META_FILE}" ]; then
+                sed -i "s/^broker.id=.*/broker.id=${KAFKA_CFG_BROKER_ID}/g" ${META_FILE}
+              fi
+
+              if [[ "$*" = "/opt/bitnami/scripts/kafka/run.sh" || "$*" = "/run.sh" ]]; then
+                  info "** Starting Kafka setup **"
+                  /opt/bitnami/scripts/kafka/setup.sh
+                  info "** Kafka setup finished! **"
+              fi
+
+              echo ""
+              exec "$@"
+            zookeeper-entrypoint.sh: |-
+              #!/bin/bash
+              set -o errexit
+              set -o nounset
+              set -o pipefail
+              . /opt/bitnami/scripts/liblog.sh
+              . /opt/bitnami/scripts/libbitnami.sh
+              . /opt/bitnami/scripts/libzookeeper.sh
+              eval "$(zookeeper_env)"
+              print_welcome_page
+
+              ID_FILE=/bitnami/zookeeper/data/myid
+              echo ${ZOO_SERVER_ID} > ${ID_FILE}
+
+              if [[ "$*" = "/opt/bitnami/scripts/zookeeper/run.sh" || "$*" = "/run.sh" ]]; then
+                  info "** Starting ZooKeeper setup **"
+                  /opt/bitnami/scripts/zookeeper/setup.sh
+                  info "** ZooKeeper setup finished! **"
+              fi
+
+              echo ""
+              exec "$@"
+          kind: ConfigMap
+          metadata:
+            name: kafka-update-id
+    - name: helm chart bitnami/kafka
+      kubernetes.core.helm:
         state: "{{ 'present' if action == 'install' else 'absent' }}"
         name: kafka
         chart_ref: bitnami/kafka
+        chart_version: 11.8.8
         release_namespace: kafka
         create_namespace: true
         values:
@@ -41,6 +103,15 @@
             storageClass: kafka-kafka
             enable: true
             size: 5Gi
+          extraVolumeMounts:
+            - name: update-id
+              mountPath: /opt/bitnami/scripts/kafka/entrypoint.sh
+              subPath: kafka-entrypoint.sh
+          extraVolumes:
+            - name: update-id
+              configMap:
+                name: kafka-update-id
+                defaultMode: 0755
           zookeeper:
             enabled: true
             heapOpts: -Xmx256m -Xms256m
@@ -49,3 +120,12 @@
               storageClass: zookeeper-kafka
               enable: true
               size: 5Gi
+            extraVolumeMounts:
+              - name: update-id
+                mountPath: /opt/bitnami/scripts/zookeeper/entrypoint.sh
+                subPath: zookeeper-entrypoint.sh
+            extraVolumes:
+              - name: update-id
+                configMap:
+                  name: kafka-update-id
+                  defaultMode: 0755
