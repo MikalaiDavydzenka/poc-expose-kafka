@@ -1,0 +1,7 @@
+- hosts: localhost
+  gather_facts: no
+  connection: local
+  vars:
+    action: install
+  roles:
+    - role: metallb

@@ -9,4 +9,4 @@ data:
     - name: metallb-ip-space
       protocol: layer2
       addresses:
-      - {{ load_balancer_external_ip }}
+      - {{ metallb_ip_range }}

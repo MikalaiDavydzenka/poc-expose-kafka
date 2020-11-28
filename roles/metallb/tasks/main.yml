@@ -6,26 +6,20 @@
   loop:
     - namespace.yaml
     - metallb.yaml
-    - asm-metal-lb-config.yaml
-  when: external_load_balancer_type == 'metal-lb'
-  tags: metal-lb
+    - config.yaml
 
 - name: MetalLB memberlist secret
   vars:
-    resource_definition: "{{ lookup('file', 'templates/secret.yaml') | from_yaml }}"
     memberlist_secret: |
       {{
         lookup(
           name='kubernetes.core.k8s',
           kind='Secret',
           namespace='metallb-system',
-          resource_definition=resource_definition,
+          resource_name='memberlist',
         )
       }}
-  when:
-    - not memberlist_secret
-    - external_load_balancer_type == 'metal-lb'
-  tags: metal-lb
+  when: not memberlist_secret
   block:
     - name: Generate secret
       command: openssl rand -base64 128
@@ -36,4 +30,4 @@
         state: "{{ 'present' if action == 'install' else 'absent' }}"
         template: secret.yaml
       vars:
-        secretkey: "{{ generated_memberlist_secret.stdout }}"
+        secretkey: "{{ generated_memberlist_secret.stdout.replace('\n', '') }}"

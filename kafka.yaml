@@ -69,7 +69,9 @@
               print_welcome_page
 
               ID_FILE=/bitnami/zookeeper/data/myid
-              echo ${ZOO_SERVER_ID} > ${ID_FILE}
+              if [ -f "${ID_FILE}" ]; then
+                echo ${ZOO_SERVER_ID} > ${ID_FILE}
+              fi
 
               if [[ "$*" = "/opt/bitnami/scripts/zookeeper/run.sh" || "$*" = "/run.sh" ]]; then
                   info "** Starting ZooKeeper setup **"
